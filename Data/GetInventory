@@ -1,0 +1,64 @@
+local CoreGui = game:GetService("CoreGui")
+local RunService = game:GetService("RunService")
+local remoteFunction = game.ReplicatedStorage.Packages.Knit.Services.InventoryService.RF.GetInventory
+
+local function formatNumber(num)
+    if type(num) == "number" then
+        return string.format("%.2f", num)
+    else
+        return tostring(num) 
+    end
+end
+
+local function tableToString(tbl, indent)
+    local result = ""
+    indent = indent or "" 
+    for key, value in pairs(tbl) do
+        if type(value) == "table" then
+            result = result .. indent .. tostring(key) .. ":\n" .. tableToString(value, indent .. "  ") 
+        else
+            result = result .. indent .. tostring(key) .. ": " .. formatNumber(value) .. "\n" 
+        end
+    end
+    return result
+end
+
+local function getInventory()
+    local success, inventory = pcall(function()
+        return remoteFunction:InvokeServer() 
+    end)
+
+    if success then
+        local inventoryString = tableToString(inventory)
+        print(inventoryString)
+        setclipboard(inventoryString) 
+        print("Inventory has been copied to the clipboard.")
+    else
+        warn("Failed to get inventory: " .. tostring(inventory))
+    end
+end
+
+local function detectGetInventoryCommand()
+    local bubbleChatList = CoreGui:FindFirstChild("ExperienceChat"):FindFirstChild("bubbleChat"):FindFirstChild("BubbleChat_3016472807"):FindFirstChild("BubbleChatList")
+
+    if bubbleChatList then
+        for _, bubble in ipairs(bubbleChatList:GetChildren()) do
+            if bubble:IsA("Frame") then
+                local chatBubbleFrame = bubble:FindFirstChild("ChatBubbleFrame")
+
+                if chatBubbleFrame then
+                    local textLabel = chatBubbleFrame:FindFirstChild("Text")
+
+                    if textLabel and textLabel.Text == "/GetInventory" then
+                        textLabel.Text = "" 
+                        getInventory() 
+                    end
+                end
+            end
+        end
+    else
+        print("Debug: BubbleChatList not found")
+    end
+end
+
+RunService.RenderStepped:Connect(detectGetInventoryCommand)
