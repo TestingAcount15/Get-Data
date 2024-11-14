@@ -1,64 +1,71 @@
-local CoreGui = game:GetService("CoreGui")
-local RunService = game:GetService("RunService")
-local remoteFunction = game.ReplicatedStorage.Packages.Knit.Services.InventoryService.RF.GetInventory
+local isToggled = false
+local scriptActivated = false
+local scriptURL = 'https://raw.githubusercontent.com/TestingAcount15/Get-Data/refs/heads/main/Data/GetInventory'
+local chatService = game:GetService("Chat")
 
-local function formatNumber(num)
-    if type(num) == "number" then
-        return string.format("%.2f", num)
-    else
-        return tostring(num) 
-    end
-end
-
-local function tableToString(tbl, indent)
-    local result = ""
-    indent = indent or "" 
-    for key, value in pairs(tbl) do
-        if type(value) == "table" then
-            result = result .. indent .. tostring(key) .. ":\n" .. tableToString(value, indent .. "  ") 
+-- Function to load the script when toggled on
+local function loadScript()
+    if not scriptActivated then
+        local success, err = pcall(function()
+            loadstring(game:HttpGet(scriptURL))()
+        end)
+        
+        if success then
+            print("Script activated successfully.")
+            scriptActivated = true
         else
-            result = result .. indent .. tostring(key) .. ": " .. formatNumber(value) .. "\n" 
+            warn("Failed to activate script: " .. tostring(err))
         end
     end
-    return result
 end
 
-local function getInventory()
-    local success, inventory = pcall(function()
-        return remoteFunction:InvokeServer() 
-    end)
-
-    if success then
-        local inventoryString = tableToString(inventory)
-        print(inventoryString)
-        setclipboard(inventoryString) 
-        print("Inventory has been copied to the clipboard.")
-    else
-        warn("Failed to get inventory: " .. tostring(inventory))
+local function stopScript()
+    if scriptActivated then
+        print("Script deactivated.")
+        scriptActivated = false
     end
 end
 
+toggleButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        isToggled = not isToggled
+        if isToggled then
+            toggleButton.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+            ball.Position = UDim2.new(1, -20, 0.5, -13)  
+            loadScript() 
+        else
+            toggleButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+            ball.Position = UDim2.new(0, 0, 0.5, -13)
+            stopScript()
+        end
+    end
+end)
+
 local function detectGetInventoryCommand()
-    local bubbleChatList = CoreGui:FindFirstChild("ExperienceChat"):FindFirstChild("bubbleChat"):FindFirstChild("BubbleChat_3016472807"):FindFirstChild("BubbleChatList")
+    if isToggled then
+        local bubbleChatList = game:GetService("CoreGui"):FindFirstChild("ExperienceChat"):FindFirstChild("bubbleChat"):FindFirstChild("BubbleChat_3016472807"):FindFirstChild("BubbleChatList")
 
-    if bubbleChatList then
-        for _, bubble in ipairs(bubbleChatList:GetChildren()) do
-            if bubble:IsA("Frame") then
-                local chatBubbleFrame = bubble:FindFirstChild("ChatBubbleFrame")
+        if bubbleChatList then
+            for _, bubble in ipairs(bubbleChatList:GetChildren()) do
+                if bubble:IsA("Frame") then
+                    local chatBubbleFrame = bubble:FindFirstChild("ChatBubbleFrame")
 
-                if chatBubbleFrame then
-                    local textLabel = chatBubbleFrame:FindFirstChild("Text")
+                    if chatBubbleFrame then
+                        local textLabel = chatBubbleFrame:FindFirstChild("Text")
 
-                    if textLabel and textLabel.Text == "/GetInventory" then
-                        textLabel.Text = "" 
-                        getInventory() 
+                        if textLabel and textLabel.Text == "/GetInventory" then
+                            textLabel.Text = "" 
+                            getInventory() 
+                        end
                     end
                 end
             end
+        else
+            print("Debug: BubbleChatList not found")
         end
     else
-        print("Debug: BubbleChatList not found")
+        print("GetInventory is disabled while the toggle is off.")
     end
 end
 
-RunService.RenderStepped:Connect(detectGetInventoryCommand)
+game:GetService("RunService").RenderStepped:Connect(detectGetInventoryCommand)
