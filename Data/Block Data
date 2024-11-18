@@ -1,0 +1,273 @@
+local remoteFunction = game.ReplicatedStorage.Packages.Knit.Services.BlockService.RF.GetBlocks
+local Island = game.Workspace.Island
+
+local function formatNumber(num)
+    return type(num) == "number" and string.format("%.2f", num) or tostring(num)
+end
+
+local function tableToString(tbl)
+    local result = ""
+    for key, value in pairs(tbl) do
+        result = result .. (type(value) == "table" and key .. ":\n" .. tableToString(value) or key .. ": " .. formatNumber(value)) .. "\n"
+    end
+    return result
+end
+
+local function writeToFile(path, data)
+    pcall(function() writefile(path, data) end)
+end
+
+local function readFromFile(path)
+    local success, data = pcall(function() return readfile(path) end)
+    return success and data or nil
+end
+
+local function getNextFileNumber(folder, baseName, extension)
+    local fileNumber = 1
+    while isfile(folder .. "/" .. baseName .. fileNumber .. extension) do
+        fileNumber = fileNumber + 1
+    end
+    return fileNumber
+end
+
+local function parseBlocksData(data)
+    local blocks, lastId = {}, nil
+    for line in data:gmatch("[^\r\n]+") do
+        local id = line:match("Id: (.-)%s*$")
+        if id then lastId = id
+        else
+            local index = line:match("Index: ([%w%-]+)%s*$")
+            if index and lastId then
+                blocks[index] = {Id = lastId}
+                lastId = nil
+            end
+        end
+    end
+    return blocks
+end
+
+local function processIslandBlocks(blocks)
+    for _, model in ipairs(Island:GetChildren()) do
+        if model:IsA("Model") or model:IsA("Part") then
+            local block = blocks[model.Name]
+            if block and block.Id then
+                local boolValue = model:FindFirstChild(block.Id) or Instance.new("BoolValue", model)
+                boolValue.Name = block.Id
+                boolValue.Value = true
+            end
+        end
+    end
+end
+
+local function getBlocks()
+    local success, blocks = pcall(remoteFunction.InvokeServer, remoteFunction)
+    if success and type(blocks) == "table" then
+        local blocksString = tableToString(blocks)
+        local fileName = "Data/Blocks Data/blocksData" .. getNextFileNumber("Data/Blocks Data", "blocksData", ".txt") .. ".txt"
+        writeToFile(fileName, blocksString)
+
+        local fileData = readFromFile(fileName)
+        if fileData then
+            local blocksData = parseBlocksData(fileData)
+            processIslandBlocks(blocksData)
+        end
+    end
+end
+
+getBlocks()
+
+local UserInputService = game:GetService("UserInputService")
+local player = game.Players.LocalPlayer
+local screenGui = Instance.new("ScreenGui", player.PlayerGui)
+local frame = Instance.new("Frame", screenGui)
+local scrollingFrame = Instance.new("ScrollingFrame", frame)
+local totalLabel = Instance.new("TextLabel", scrollingFrame)
+
+screenGui.Name = "StatsGui"
+screenGui.Enabled = false
+
+frame.Size = UDim2.new(0, 400, 0, 300)
+frame.Position = UDim2.new(0.5, -200, 0.5, -150)
+frame.BackgroundTransparency = 0.5
+frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+local uiCorner = Instance.new("UICorner", frame)
+
+scrollingFrame.Size = UDim2.new(1, 0, 1, 0)
+scrollingFrame.CanvasSize = UDim2.new(0, 0, 5, 0)
+scrollingFrame.BackgroundTransparency = 1
+scrollingFrame.ScrollBarThickness = 10
+totalLabel.Size = UDim2.new(1, 0, 0, 30)
+totalLabel.Position = UDim2.new(0, 0, 1, -30)
+totalLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+totalLabel.TextSize = 27.5
+totalLabel.BackgroundTransparency = 1
+
+local dragging = false
+local dragStart = nil
+local startPos = nil
+
+local function updateDragPosition(input)
+    local delta = input.Position - dragStart
+    frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+end
+
+frame.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = frame.Position
+    end
+end)
+
+frame.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        updateDragPosition(input)
+    end
+end)
+
+local boolValueCounts = {}
+
+local function updateBoolValueCount(name, change)
+    if boolValueCounts[name] then
+        boolValueCounts[name] = boolValueCounts[name] + change
+    else
+        boolValueCounts[name] = change
+    end
+end
+
+local function countBoolValuesInIsland()
+    local total = 0
+    boolValueCounts = {}
+    for _, model in ipairs(Island:GetChildren()) do
+        if model:IsA("Model") or model:IsA("Part") then
+            for _, child in ipairs(model:GetChildren()) do
+                if child:IsA("BoolValue") then
+                    updateBoolValueCount(child.Name, 1)
+                    total = total + 1
+                end
+            end
+        end
+    end
+    return total
+end
+
+local searchTextBox = Instance.new("TextBox", scrollingFrame)
+searchTextBox.Size = UDim2.new(1, 0, 0, 30)
+searchTextBox.Position = UDim2.new(0, 0, 0, 0)
+searchTextBox.Text = ""
+searchTextBox.PlaceholderText = "Search"
+searchTextBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+searchTextBox.BackgroundTransparency = 0.5
+searchTextBox.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+searchTextBox.TextSize = 20
+
+local searchBoxCorner = Instance.new("UICorner", searchTextBox)
+searchBoxCorner.CornerRadius = UDim.new(0, 8)
+
+local progressBarContainer = Instance.new("Frame", scrollingFrame)
+progressBarContainer.Size = UDim2.new(1, 0, 0, 10)
+progressBarContainer.Position = UDim2.new(0, 0, 0, 35)
+progressBarContainer.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
+
+local progressBar = Instance.new("Frame", progressBarContainer)
+progressBar.Size = UDim2.new(0, 0, 1, 0)
+progressBar.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+
+local function updateProgressBar()
+    local total = countBoolValuesInIsland()
+    local active = 0
+    for _, count in pairs(boolValueCounts) do
+        active = active + count
+    end
+    local progress = active / total
+    progressBar.Size = UDim2.new(progress, 0, 1, 0)
+end
+
+local function updateGuiWithBoolValues()
+    if not searchTextBox then return end
+
+    for _, child in ipairs(scrollingFrame:GetChildren()) do
+        if child:IsA("TextLabel") and child ~= totalLabel and child ~= searchTextBox then
+            child:Destroy()
+        end
+    end
+
+    local total = countBoolValuesInIsland()
+    local yOffset = 70
+
+    for name, count in pairs(boolValueCounts) do
+        if searchTextBox.Text == "" or name:lower():find(searchTextBox.Text:lower()) then
+            local label = Instance.new("TextLabel", scrollingFrame)
+            label.Size = UDim2.new(1, 0, 0, 30)
+            label.Position = UDim2.new(0, 0, 0, yOffset)
+            label.Text = name .. ": " .. count
+            label.TextColor3 = Color3.fromRGB(255, 255, 255)
+            label.TextSize = 18
+            label.BackgroundTransparency = 1
+            yOffset = yOffset + 30
+
+            local line = Instance.new("Frame", scrollingFrame)
+            line.Size = UDim2.new(1, 0, 0, 1)
+            line.Position = UDim2.new(0, 0, 0, yOffset)
+            line.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            yOffset = yOffset + 1
+        end
+    end
+
+    totalLabel.Position = UDim2.new(0, 0, 0, yOffset)
+    totalLabel.Text = "Total: " .. total
+    totalLabel.Visible = true
+
+    scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, yOffset + 50)
+    
+    updateProgressBar()
+end
+
+searchTextBox:GetPropertyChangedSignal("Text"):Connect(function()
+    if searchTextBox then
+        updateGuiWithBoolValues()
+    end
+end)
+
+Island.ChildAdded:Connect(function(child)
+    if child:IsA("Model") or child:IsA("Part") then
+        getBlocks()
+
+        for _, boolValue in ipairs(child:GetChildren()) do
+            if boolValue:IsA("BoolValue") then
+                updateBoolValueCount(boolValue.Name, 1)
+                updateGuiWithBoolValues()
+            end
+        end
+    end
+end)
+
+Island.ChildRemoved:Connect(function(child)
+    if child:IsA("Model") or child:IsA("Part") then
+        for _, boolValue in ipairs(child:GetChildren()) do
+            if boolValue:IsA("BoolValue") then
+                updateBoolValueCount(boolValue.Name, -1)
+                updateGuiWithBoolValues()
+            end
+        end
+    end
+end)
+
+local function toggleGui()
+    screenGui.Enabled = not screenGui.Enabled
+    if screenGui.Enabled then
+        updateGuiWithBoolValues()
+    end
+end
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Enum.KeyCode.F5 then
+        toggleGui()
+    end
+end)
